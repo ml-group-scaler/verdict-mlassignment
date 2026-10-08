@@ -1,0 +1,70 @@
+name: Verdict LLM-judge merge gate
+description: >
+  Send your system's outputs to a Verdict service, get them judged by a calibrated
+  LLM-judge panel against a baseline, and fail the job if quality regresses.
+inputs:
+  api-url:
+    description: Base URL of the Verdict API (e.g. https://verdict.example.com)
+    required: true
+  api-key:
+    description: Value for the X-API-Key header (store it as a secret)
+    required: false
+    default: ""
+  outputs-file:
+    description: 'JSON file {"<system_id>": {"<item_id>": "<response>"}} containing BOTH baseline and candidate outputs'
+    required: true
+  baseline:
+    description: system id in outputs-file to compare against
+    required: true
+  candidate:
+    description: system id in outputs-file being proposed by this PR
+    required: true
+  profile:
+    description: Verdict profile that supplies the dataset, judges and rubrics
+    default: ci
+  margin:
+    description: allowed drop (1–5 scale) before the gate fails
+    default: "0.3"
+  gate-rubrics:
+    description: comma-separated rubrics to gate on
+    default: faithfulness,helpfulness,safety
+  min-scores:
+    description: 'absolute floors, e.g. "safety=4.5"'
+    default: "safety=4.5"
+  timeout-minutes:
+    description: max minutes to wait for the run
+    default: "20"
+  comment:
+    description: post the report as a PR comment (needs pull-requests write permission)
+    default: "true"
+outputs:
+  run-id:
+    description: Verdict run id
+    value: ${{ steps.gate.outputs.run-id }}
+  passed:
+    description: '"true" if the gate passed'
+    value: ${{ steps.gate.outputs.passed }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        VERDICT_API_URL: ${{ inputs.api-url }}
+        VERDICT_API_KEY: ${{ inputs.api-key }}
+      run: |
+        python3 "${{ github.action_path }}/verdict_gate.py" \
+          --outputs-file "${{ inputs.outputs-file }}" --baseline "${{ inputs.baseline }}" \
+          --candidate "${{ inputs.candidate }}" --profile "${{ inputs.profile }}" --margin "${{ inputs.margin }}" \
+          --gate-rubrics "${{ inputs.gate-rubrics }}" --min-scores "${{ inputs.min-scores }}" \
+          --timeout-minutes "${{ inputs.timeout-minutes }}" --report verdict_report.md --no-fail
+    - if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh pr comment "${{ github.event.pull_request.number }}" --body-file verdict_report.md --edit-last || gh pr comment "${{ github.event.pull_request.number }}" --body-file verdict_report.md
+    - if: steps.gate.outputs.passed != 'true'
+      shell: bash
+      run: |
+        echo "::error::Verdict merge gate failed — see the job summary / PR comment for the per-rubric deltas."
+        exit 1

@@ -1,0 +1,24 @@
+# Example: how ANY repo gates merges on Verdict. Copy into the client repo.
+# The repo regenerates its bot's answers for the Verdict dataset on the PR branch
+# (candidate) and compares them to the answers committed from main (baseline).
+name: llm-quality-gate
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate candidate outputs
+        run: python generate_outputs.py --out outputs.json   # writes {"baseline": {...}, "candidate": {...}}
+      - uses: <your-org>/verdict/action@main
+        with:
+          api-url: ${{ vars.VERDICT_API_URL }}
+          api-key: ${{ secrets.VERDICT_API_KEY }}
+          outputs-file: outputs.json
+          baseline: baseline
+          candidate: candidate
+          profile: ci
+          margin: "0.3"

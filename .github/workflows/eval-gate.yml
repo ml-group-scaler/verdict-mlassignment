@@ -1,0 +1,33 @@
+# Eval-as-CI for the demo support bot: any PR that touches a system prompt or system config
+# is judged by the NVIDIA judge panel; a regression vs the baseline fails the build.
+name: eval-gate
+on:
+  pull_request:
+    paths: ["prompts/system/**", "configs/systems/**", "configs/models.yaml", "configs/profiles/ci.yaml"]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e .
+      - name: Skip when the secret is missing (e.g. fork PRs)
+        if: env.NVIDIA_API_KEY == ''
+        run: echo "::notice::NVIDIA_API_KEY not available — eval gate skipped"
+      - name: Judge candidate vs baseline
+        if: env.NVIDIA_API_KEY != ''
+        run: |
+          set +e
+          verdict run --profile ci --fail-on-gate --md-out verdict_report.md
+          code=$?
+          cat verdict_report.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file verdict_report.md || true
+          exit $code
+        env:
+          GH_TOKEN: ${{ github.token }}

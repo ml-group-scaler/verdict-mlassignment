@@ -1,0 +1,22 @@
+# "Judge the judge": a PR that changes a rubric, judge prompt or judge model must keep
+# agreement with the human-labelled set above the thresholds in configs/calibration_gate.yaml.
+name: judge-calibration
+on:
+  pull_request:
+    paths: ["configs/rubrics/**", "prompts/judge/**", "configs/judges/**", "configs/models.yaml", "data/human_labels/**"]
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e .
+      - name: Calibrate (skipped without key or labels)
+        run: |
+          if [ -z "$NVIDIA_API_KEY" ] || [ ! -s data/human_labels/labels.jsonl ]; then
+            echo "::notice::calibration skipped (missing NVIDIA_API_KEY or data/human_labels/labels.jsonl)"; exit 0; fi
+          verdict calibrate --enforce
+          cat reports/calibration.md >> "$GITHUB_STEP_SUMMARY"

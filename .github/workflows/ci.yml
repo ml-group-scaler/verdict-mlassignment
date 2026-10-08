@@ -1,0 +1,19 @@
+# Runs on every push/PR with no secrets: unit tests + a full offline (mock) eval with merge gate.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+      - name: Offline eval + gate (mock judges)
+        run: |
+          verdict run --profile mock --fail-on-gate --md-out reports/mock_run.md
+          cat reports/mock_run.md >> "$GITHUB_STEP_SUMMARY"
