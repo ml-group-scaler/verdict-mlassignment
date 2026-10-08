@@ -1,0 +1,3 @@
+id: mock-judge-biased
+description: Offline judge with injected position + verbosity bias, to prove the bias controls detect it
+model: mock-judge-biased

@@ -1,0 +1,18 @@
+id: format_adherence
+version: 1
+name: Format & style-guide adherence
+description: The response follows the NimbusMart agent style guide (S12) — length, structure, tone, no markdown tables, ends with a next step.
+uses_context: false
+uses_reference: false
+include_style_guide: true
+scale: {min: 1, max: 5}
+programmatic_checks:
+  max_words: 120
+criteria: |
+  Judge ONLY the form of the response against the STYLE GUIDE, not its correctness.
+anchors:
+  1: Ignores the style guide (e.g. very long, markdown tables, rude/robotic, no next step).
+  2: Violates two or more style rules.
+  3: Violates one style rule clearly.
+  4: Follows the style guide with a small deviation.
+  5: Follows every rule of the style guide.

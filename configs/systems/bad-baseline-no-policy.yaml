@@ -1,0 +1,5 @@
+id: bad-baseline-no-policy
+description: Sanity check — GLM-5.3-flash WITHOUT the policy document. A working judge must rank this last on faithfulness.
+model: glm-5.3-flash
+system_prompt: prompts/system/support_no_policy.txt
+include_policy: false

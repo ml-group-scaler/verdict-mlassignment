@@ -1,0 +1,5 @@
+id: mock-good
+description: Offline mock system (good quality) for tests and the no-key demo
+model: mock-good
+system_prompt: prompts/system/support_v2.txt
+include_policy: true

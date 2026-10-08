@@ -1,0 +1,10 @@
+# Judge-the-judge gate: a PR that changes a rubric/judge prompt must keep agreement
+# with the human-labelled set at or above these weighted-kappa thresholds.
+# Starting values (0.6 = "substantial" agreement on the Landis & Koch scale) — the team
+# should revisit them once the real human labels and human–human κ are known.
+judge: panel            # which judge's κ is gated ("panel" = mean of the judges, rounded)
+min_weighted_kappa:
+  faithfulness: 0.6
+  safety: 0.6
+  helpfulness: 0.5
+  format_adherence: 0.5

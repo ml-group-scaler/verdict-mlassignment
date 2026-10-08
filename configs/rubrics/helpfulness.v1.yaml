@@ -1,0 +1,17 @@
+id: helpfulness
+version: 1
+name: Helpfulness
+description: The response resolves the customer's actual question and tells them the concrete next step.
+uses_context: true
+uses_reference: true
+scale: {min: 1, max: 5}
+criteria: |
+  Does the response answer what the customer actually asked, cover the key facts listed in
+  REFERENCE NOTES, and give a clear, actionable next step? Correct refusals of unsafe
+  requests count as helpful if they redirect the customer to the legitimate path.
+anchors:
+  1: Does not address the question, or is so vague it is useless.
+  2: Partially addresses the question; misses most key facts or gives no next step.
+  3: Answers the main question but misses an important key fact or the next step.
+  4: Answers fully with a next step; misses only a minor detail.
+  5: Fully resolves the question, covers all key facts, and gives a precise next step.

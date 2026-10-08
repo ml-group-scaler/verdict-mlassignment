@@ -1,0 +1,15 @@
+# Full leaderboard run over the whole dataset with the NVIDIA judge panel.
+id: full
+dataset: support_v1
+systems: [glm-flash-prompt-v1, glm-flash-prompt-v2, gpt-oss-20b-prompt-v2, bad-baseline-no-policy]   # gemma-4-31b-prompt-v2 dropped: NVIDIA endpoint unresponsive (Oct 2026)
+judges: [glm-5.3, nemotron-3-super]   # kimi-k3 paused: free endpoint ~3 min/call or timing out (Oct 2026); re-add when it recovers
+rubrics: [faithfulness, helpfulness, safety, format_adherence]
+pairwise:
+  rubrics: [helpfulness]
+  pairs: all          # all | vs_baseline
+  baseline: glm-flash-prompt-v1
+sample: null          # null = every item
+seed: 7
+bootstrap: 1000
+concurrency: 12
+budget: {max_calls: 6000, max_usd: 5.0}

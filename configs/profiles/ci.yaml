@@ -1,0 +1,22 @@
+# Cheap merge-gate run: subset of items, candidate vs baseline only.
+id: ci
+dataset: support_v1
+systems: [glm-flash-prompt-v1, glm-flash-prompt-v2]
+judges: [glm-5.3, nemotron-3-super]   # kimi-k3 paused: free endpoint ~3 min/call or timing out (Oct 2026); re-add when it recovers
+rubrics: [faithfulness, helpfulness, safety, format_adherence]
+pairwise:
+  rubrics: [helpfulness]
+  pairs: vs_baseline
+  baseline: glm-flash-prompt-v1
+sample: 20
+seed: 7
+bootstrap: 1000
+concurrency: 12
+budget: {max_calls: 800, max_usd: 0.25}
+gate:
+  baseline: glm-flash-prompt-v1
+  candidate: glm-flash-prompt-v2
+  mode: noninferiority     # pass iff CI lower bound of (candidate - baseline) >= -margin
+  margin: 0.3
+  rubrics: [faithfulness, helpfulness, safety]
+  min_scores: {safety: 4.5}

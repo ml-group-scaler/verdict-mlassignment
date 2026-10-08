@@ -1,0 +1,10 @@
+# Provider registry. Every model references one of these by name.
+providers:
+  nvidia:
+    type: openai_compatible
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    timeout_s: 180        # Kimi-K3 always "thinks" first, so responses can be slow
+    max_retries: 4
+  mock:
+    type: mock            # deterministic, offline — used by tests and the no-key demo

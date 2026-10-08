@@ -1,0 +1,5 @@
+id: gemma-4-31b-prompt-v2
+description: Gemma-4-31B with the v2 support prompt
+model: gemma-4-31b
+system_prompt: prompts/system/support_v2.txt
+include_policy: true

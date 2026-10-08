@@ -1,0 +1,5 @@
+id: glm-flash-prompt-v2
+description: GLM-5.3-flash with the v2 support prompt (stricter grounding + style guide)
+model: glm-5.3-flash
+system_prompt: prompts/system/support_v2.txt
+include_policy: true

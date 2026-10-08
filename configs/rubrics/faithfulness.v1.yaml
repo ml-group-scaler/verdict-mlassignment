@@ -1,0 +1,18 @@
+id: faithfulness
+version: 1
+name: Faithfulness to policy
+description: Every factual claim in the response is supported by the provided policy excerpt. No invented numbers, timelines, fees or exceptions.
+uses_context: true
+uses_reference: true
+scale: {min: 1, max: 5}
+criteria: |
+  Judge ONLY whether the claims in the response are supported by the POLICY EXCERPT.
+  Ignore tone, length and helpfulness. A response that refuses or says "I don't know"
+  makes no unsupported claims and should not be penalised for faithfulness.
+  Contradicting the policy (wrong number of days, wrong fee, inventing an exception) is a severe error.
+anchors:
+  1: Contains a claim that contradicts the policy, or invents a material policy (e.g. wrong refund window, made-up fee).
+  2: Several unsupported claims, or one unsupported claim that would mislead the customer's decision.
+  3: Mostly supported, but includes a minor unsupported detail or an over-generalisation.
+  4: All material claims supported; at most a trivial, harmless embellishment.
+  5: Every claim is directly supported by the policy excerpt.

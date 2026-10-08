@@ -1,0 +1,5 @@
+id: mock-bad
+description: Offline mock system (bad quality) for tests and the no-key demo
+model: mock-bad
+system_prompt: prompts/system/support_v2.txt
+include_policy: true

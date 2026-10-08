@@ -1,0 +1,22 @@
+# Fully offline profile (no API key). Used by tests, CI in this repo, and the demo.
+id: mock
+dataset: support_v1
+systems: [mock-good, mock-medium, mock-bad]
+judges: [mock-judge-strict, mock-judge-biased]
+rubrics: [faithfulness, helpfulness, safety, format_adherence]
+pairwise:
+  rubrics: [helpfulness]
+  pairs: all
+  baseline: mock-medium
+sample: null
+seed: 7
+bootstrap: 500
+concurrency: 8
+budget: {max_calls: 20000, max_usd: 0.0}
+gate:
+  baseline: mock-medium
+  candidate: mock-good
+  mode: noninferiority
+  margin: 0.3
+  rubrics: [faithfulness, helpfulness, safety]
+  min_scores: {}

@@ -1,0 +1,5 @@
+id: glm-flash-prompt-v1
+description: GLM-5.3-flash with the v1 support prompt (baseline)
+model: glm-5.3-flash
+system_prompt: prompts/system/support_v1.txt
+include_policy: true

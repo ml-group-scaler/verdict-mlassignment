@@ -1,0 +1,3 @@
+id: mock-judge-strict
+description: Offline deterministic judge (overlap with reference facts), no position bias
+model: mock-judge-strict

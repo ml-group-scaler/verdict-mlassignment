@@ -1,0 +1,4 @@
+id: mock-judge-flaky
+description: Offline judge whose primary model is down — exercises the fallback chain + circuit breaker
+model: mock-judge-down
+fallback_models: [mock-judge-strict]

@@ -1,0 +1,122 @@
+# Model registry. `family` is used for the self-preference bias check
+# (a judge grading outputs from its own model family).
+#
+# Prices: NVIDIA NIM's build.nvidia.com endpoints are a free trial tier, so
+# price_* = 0.0. Token counts are still recorded per call; set real prices here
+# if you move to a paid provider and cost-per-request is computed automatically.
+#
+# rpm: NVIDIA free tier is ~40 requests/min per model (best-effort). We stay under it.
+models:
+  kimi-k3:
+    provider: nvidia
+    model: moonshotai/kimi-k3
+    family: kimi
+    temperature: 1.0       # Moonshot's recommended setting for K3 (thinking is always on)
+    top_p: 0.95
+    max_tokens: 8192       # thinking tokens count against this
+    max_tokens_param: max_completion_tokens   # as shown in the build.nvidia.com K3 snippet
+    timeout_s: 180         # fail over to the fallback instead of waiting the provider default
+    max_retries: 1
+    max_concurrency: 3     # a stalled endpoint can block at most 3 worker threads
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  glm-5.3:
+    provider: nvidia
+    model: z-ai/glm-5.3
+    family: glm
+    temperature: 0.0
+    max_tokens: 4096
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  nemotron-3-super:
+    provider: nvidia
+    model: nvidia/nemotron-3-super-120b-a12b
+    family: nemotron
+    temperature: 0.0
+    max_tokens: 4096       # reasoning model: thinking tokens count against this
+    timeout_s: 120
+    max_retries: 2
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  nemotron-3.5-lightning:
+    # Fallback judge model: the only responsive NVIDIA model (Oct 2026 probe) that is neither
+    # a primary judge nor a system under test.
+    provider: nvidia
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    family: nemotron
+    temperature: 0.0
+    max_tokens: 4096
+    timeout_s: 120
+    max_retries: 2
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  glm-5.3-flash:
+    provider: nvidia
+    model: z-ai/glm-5.3-flash
+    family: glm
+    temperature: 0.3
+    max_tokens: 1024
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  gemma-4-31b:
+    provider: nvidia
+    model: google/gemma-4-31b-it
+    family: gemma
+    temperature: 0.3
+    max_tokens: 1024
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+  gpt-oss-20b:
+    provider: nvidia
+    model: openai/gpt-oss-20b
+    family: gpt-oss
+    temperature: 0.3
+    max_tokens: 2048
+    rpm: 35
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    extra_body: {}
+
+  # ---- Offline mock models (no network). behaviour is interpreted by verdict/providers/mock.py
+  mock-good:
+    provider: mock
+    model: mock-good
+    family: mock-a
+    behaviour: {role: system, quality: good}
+  mock-medium:
+    provider: mock
+    model: mock-medium
+    family: mock-b
+    behaviour: {role: system, quality: medium}
+  mock-bad:
+    provider: mock
+    model: mock-bad
+    family: mock-c
+    behaviour: {role: system, quality: bad}
+  mock-judge-strict:
+    provider: mock
+    model: mock-judge-strict
+    family: mock-a
+    behaviour: {role: judge, position_bias: 0.0, noise: 0.0}
+  mock-judge-biased:
+    provider: mock
+    model: mock-judge-biased
+    family: mock-j
+    behaviour: {role: judge, position_bias: 0.25, noise: 0.15, verbosity_bias: 0.5}
+  mock-judge-down:
+    provider: mock
+    model: mock-judge-down
+    family: mock-down
+    behaviour: {role: judge, down: true}   # simulates an unresponsive endpoint (like Kimi-K3 on the free tier)

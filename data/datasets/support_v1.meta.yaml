@@ -1,0 +1,7 @@
+id: support_v1
+status: DRAFT   # Drafted by Claude to bootstrap the pipeline. The team must review, rewrite and extend to 80-100 items by hand.
+description: NimbusMart (fictional) customer-support questions answered from the store policy.
+items: data/datasets/support_v1.jsonl
+policy: data/policy/nimbusmart_policy.md
+style_guide_section: S12
+planted: data/datasets/support_v1_planted.jsonl
