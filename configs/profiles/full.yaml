@@ -11,5 +11,5 @@ pairwise:
 sample: null          # null = every item
 seed: 7
 bootstrap: 1000
-concurrency: 12
+concurrency: 40      # GLM-5.3 ~56 s/call: ~35 in flight are needed to reach its 35 rpm limit
 budget: {max_calls: 6000, max_usd: 5.0}

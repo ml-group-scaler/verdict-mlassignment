@@ -27,7 +27,7 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
 | Judge–human agreement | weighted κ ≥ 0.6 on faithfulness & safety, ≥ 0.5 on helpfulness & format (`configs/calibration_gate.yaml`) |
 | Position bias | position-flip rate reported per judge (target < 15%) |
 | CI gate run (20 items, 2 systems, 2 judges) | < 10 min, < $0.25 |
-| Online score latency | p95 < 5 s per judgment |
+| Online score latency | p95 < 5 s per judgment (**not met** on the NVIDIA free tier with GLM-5.3, see Numbers) |
 | Budget | < $20 total (NVIDIA NIM free tier used ⇒ $0 marginal) |
 
 **In scope:** English text, hosted models only (NVIDIA NIM), single-tenant API key, configs in git.
@@ -102,16 +102,27 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
 
 | metric | value | source |
 |---|---|---|
-| Unit/integration tests | 34 passed | `pytest` |
+| Unit/integration tests | 42 passed | `pytest` |
 | API load test (mock judge, laptop, 20 users) | **63.8 req/s, p50 6 ms, p99 73 ms, 0 failures / 1,214 req** | `scripts/locustfile.py` |
 | Offline mock run (45 items × 3 systems × 4 rubrics × 2 judges + pairwise) | 1,775 LLM calls in ~1.5 s; re-run 100% cache hits, identical results | `verdict run --profile mock` |
 | Mock bias controls | injected 25% position bias detected as 19% flip rate; injection probe Δ +1.86 for the weak judge, 0.00 for the strict one | proves the detectors work |
-| **Judge–human κ (Kimi-K3, GLM-5.3, panel)** | _TBD after the team labels data_ | `verdict calibrate` |
-| **Position-flip rate / self-preference (real judges)** | _TBD_ | `verdict run --profile full` |
-| **Judge p50/p99 latency, cost per judgment (real judges)** | _TBD_ | run summary → Ops |
-| **Leaderboard (real systems)** | _TBD_ | `verdict run --profile full` |
+| **Live planted-error probe** (GLM-5.3, Nemotron-3-Super) | **14/14 correct for both judges** (every seeded error ≤ 2, every good answer ≥ 4) | `reports/probe_planted.md` |
+| **Live CI run** (20 items, prompt v1 vs v2, 2 judges, 455 calls) | v2 vs v1 overall 4.51 vs 4.45 — **no significant difference**; gate **failed** on faithfulness (Δ +0.07, CI [−0.40, +0.50]) | `reports/live_ci.md` |
+| Inter-judge agreement (GLM-5.3 vs Nemotron-3-Super) | **weighted κ 0.65**, Spearman 0.60; disagreement (spread ≥ 2) 7% of 153 cases | live CI run |
+| Position-flip rate | **0/20** for each judge | live CI run |
+| Self-preference (GLM-5.3 judging GLM-family systems) | **Δ −0.01** (none detected) | live CI run |
+| Judge health | GLM-5.3: 3% abstain, 3% JSON repair, 1% fallback; Nemotron: 1% abstain, 0% fallback | live CI run |
+| Judge latency (NVIDIA free tier) | **p50 15.6 s, p99 297 s**; generation (GLM-5.3-flash) p50 71 s | live CI run |
+| Online `/v1/score` (2 rubrics × 2 judges, parallel) | 33 s (bounded by GLM-5.3) — **misses the 5 s target**; Nemotron alone ≈ 3–8 s | live API test |
+| Cost | **$0** (NVIDIA free tier); 346k input / 379k output tokens for the CI run | live CI run |
+| **Judge–human κ** | _TBD after the team labels data_ | `verdict calibrate` |
+| **Full leaderboard** (45 items, 4 systems) | _paused at ~20%: NVIDIA free-tier quota for GLM-5.3 ran out (instant HTTP 429). Resume later with `verdict run --profile full` — the cache (924 entries) skips all finished work_ | `verdict run --profile full` |
 
-> Mock numbers prove the plumbing, not judge quality. Replace the TBD rows after the live NVIDIA runs.
+> Mock rows prove the plumbing; live rows are real NVIDIA NIM runs from 2026-10-08.
+>
+> **Finding:** with 20 items the non-inferiority gate cannot rule out a 0.4-point faithfulness drop, so it fails even when
+> nothing regressed. Fixes, in order of preference: grow the eval set, gate on the full 45+ items, or use
+> `mode: significant_regression` for PR gating (fail only on a statistically significant drop).
 
 ## Quickstart
 
@@ -167,6 +178,9 @@ VERDICT_API_URL=http://localhost:8000 .venv/bin/streamlit run ui/app.py
 
 Unparseable judge output (repair → abstain, rate reported) · 429 / 5xx / timeouts (exponential backoff, Retry-After) ·
 unresponsive judge endpoint (per-model timeout → fallback model; circuit breaker skips a dead model for 5 min) ·
+provider throttling — HTTP 429 is treated as "slow down", not "down": separate backoff budget, never trips the breaker
+or triggers fallback (learned live: at 40 in flight NVIDIA throttled GLM-5.3 and its judge slot silently drifted to the
+fallback model; now capped at 8 in flight / 20 rpm) ·
 reasoning model exhausting its token budget (explicit error) · missing API key (fails fast before queueing) ·
 prompt injection inside responses (delimiting + injection probe + injection items in the dataset) · position bias
 (swap + flip rate) · run cost runaway (per-run call/USD budget) · crash mid-run (re-queued on restart; cache makes the
@@ -176,8 +190,9 @@ retry cheap) · free-tier cold start (Action client retries).
 
 - [ ] Review / rewrite / extend `support_v1.jsonl` to 80–100 items by hand (it is a DRAFT).
 - [ ] Label ≥ 150 judgments (2 labelers each) in the UI → `verdict labels-export` → commit `labels.jsonl`.
-- [ ] Add `NVIDIA_API_KEY` to `.env` and as a GitHub secret; run `full`, `ci`, probes, calibration; fill the Numbers table.
-- [ ] Verify Kimi-K3 / GLM-5.3 request parameters (temperature, thinking effort) on a live smoke test.
+- [ ] Add `NVIDIA_API_KEY` as a GitHub secret so `eval-gate.yml` / `judge-calibration.yml` run on PRs.
+- [ ] Re-enable Kimi-K3 in `configs/profiles/*.yaml` once its free endpoint responds (it took ~3 min/call or timed out on 2026-10-08).
+- [ ] Decide the PR-gate policy given the 20-item power problem (see Numbers → Finding).
 - [ ] Deploy (API + UI) and add the live URL; screenshot a PR blocked by `eval-gate`.
 
 ## Resume line

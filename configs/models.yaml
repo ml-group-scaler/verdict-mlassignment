@@ -27,8 +27,9 @@ models:
     model: z-ai/glm-5.3
     family: glm
     temperature: 0.0
-    max_tokens: 4096
-    rpm: 35
+    max_tokens: 8192       # 4096 ran out mid-reasoning on ~5% of judge calls (live CI run, Oct 2026)
+    rpm: 20                # NVIDIA returned 429s for GLM-5.3 at ~35 rpm / 40 in flight
+    max_concurrency: 8
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     extra_body: {}
@@ -63,7 +64,8 @@ models:
     model: z-ai/glm-5.3-flash
     family: glm
     temperature: 0.3
-    max_tokens: 1024
+    max_tokens: 1024       # NOTE: ran out mid-reasoning on 3/135 answers in the live full run; raise to 2048 before the
+                           # final presentation run (changing it invalidates the cached generations)
     rpm: 35
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0

@@ -49,7 +49,8 @@ class _Progress:
         self._lock = threading.Lock()
         self._last_flush = 0.0
         with db.write() as s:
-            s.execute(update(db.Run).where(db.Run.id == run_id).values(progress_total=total, progress_done=0))
+            s.execute(update(db.Run).where(db.Run.id == run_id).values(progress_total=total, progress_done=0,
+                                                                       heartbeat_at=db.utcnow()))
 
     def tick(self, n: int = 1) -> None:
         with self._lock:
@@ -60,7 +61,7 @@ class _Progress:
             self._last_flush = now
             done = self.done
         with db.write() as s:
-            s.execute(update(db.Run).where(db.Run.id == self.run_id).values(progress_done=done))
+            s.execute(update(db.Run).where(db.Run.id == self.run_id).values(progress_done=done, heartbeat_at=db.utcnow()))
 
 
 def _parallel(fn: Callable, tasks: list, workers: int, progress: _Progress) -> list:
@@ -99,7 +100,8 @@ def execute(run_id: str, reg: Registry | None = None) -> dict:
         raise KeyError(run_id)
     spec = RunSpec(**run.spec)
     with db.write() as s:
-        s.execute(update(db.Run).where(db.Run.id == run_id).values(status="running", started_at=db.utcnow(), error=None))
+        s.execute(update(db.Run).where(db.Run.id == run_id).values(status="running", started_at=db.utcnow(),
+                                                                   heartbeat_at=db.utcnow(), error=None))
     # Re-running a run id (e.g. after a crash) starts clean; the LLM cache makes it cheap.
     with db.write() as s:
         s.query(db.Generation).filter(db.Generation.run_id == run_id).delete()

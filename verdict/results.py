@@ -105,7 +105,8 @@ def evaluate_gate(gate: GateCfg, item_score: dict, n_boot: int, seed: int) -> di
     for r, floor in gate.min_scores.items():
         vals = list(item_score.get(gate.candidate, {}).get(r, {}).values())
         m = mean(vals) if vals else None
-        checks.append({"rubric": r, "ok": m is not None and m >= floor, "rule": f"candidate mean {m if m is None else round(m, 2)} >= {floor}",
+        checks.append({"rubric": f"{r} (minimum)", "ok": m is not None and m >= floor,
+                       "rule": f"candidate mean {m if m is None else round(m, 2)} >= {floor}",
                        "mean": m, "lo": None, "hi": None, "n": len(vals)})
     return {"passed": all(c["ok"] for c in checks), "baseline": gate.baseline, "candidate": gate.candidate,
             "mode": gate.mode, "margin": gate.margin, "checks": checks}

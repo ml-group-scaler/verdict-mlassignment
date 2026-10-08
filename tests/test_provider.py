@@ -64,3 +64,18 @@ def test_missing_key(monkeypatch):
     monkeypatch.delenv("FAKE_KEY", raising=False)
     with pytest.raises(ProviderError, match="FAKE_KEY is not set"):
         OpenAICompatProvider(CFG).complete(MODEL, [{"role": "user", "content": "x"}])
+
+
+def test_429_backs_off_without_using_retry_budget_or_tripping_breaker(monkeypatch):
+    seen = []
+
+    def handler(req):
+        seen.append(1)
+        return httpx.Response(429, text="slow down") if len(seen) <= 5 else ok()
+
+    # max_retries=2, yet 5 throttles are tolerated because 429 has its own budget
+    assert _provider(handler, monkeypatch).complete(MODEL, [{"role": "user", "content": "x"}]).text == "hello"
+
+    with pytest.raises(ProviderError) as e:
+        _provider(lambda r: httpx.Response(429, text="slow down"), monkeypatch).complete(MODEL, [{"role": "user", "content": "x"}])
+    assert e.value.availability is False  # exhausted throttling must not open the circuit breaker

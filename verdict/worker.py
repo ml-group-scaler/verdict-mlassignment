@@ -6,16 +6,27 @@ from __future__ import annotations
 import logging
 import threading
 
-from sqlalchemy import select, update
+from datetime import timedelta
+
+from sqlalchemy import or_, select, update
 
 from . import db, runner
 
 log = logging.getLogger("verdict.worker")
 
 
-def recover() -> int:
+STALE_AFTER = timedelta(minutes=10)
+
+
+def recover(stale_after: timedelta = STALE_AFTER) -> int:
+    """Re-queue runs left 'running' by a crashed executor. A run whose heartbeat is recent is
+    still being executed by another process (e.g. `verdict run` in a terminal) and is left alone."""
+    cutoff = db.utcnow() - stale_after
     with db.write() as s:
-        res = s.execute(update(db.Run).where(db.Run.status == "running").values(status="queued"))
+        res = s.execute(update(db.Run).where(
+            db.Run.status == "running",
+            or_(db.Run.heartbeat_at.is_(None), db.Run.heartbeat_at < cutoff),
+        ).values(status="queued"))
         return res.rowcount or 0
 
 

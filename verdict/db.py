@@ -34,6 +34,7 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # last progress write by the executor
 
 
 class Generation(Base):
@@ -147,7 +148,24 @@ def init(url: str | None = None) -> None:
             cur.execute("PRAGMA synchronous=NORMAL")
             cur.close()
     Base.metadata.create_all(_engine)
+    _migrate(_engine)
     _Session = sessionmaker(_engine, expire_on_commit=False)
+
+
+def _migrate(engine) -> None:  # noqa: ANN001
+    """Additive migration: add any nullable column that exists in the models but not in the DB
+    (create_all only creates missing tables). Never drops or alters existing columns."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in existing and col.nullable:
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'))
 
 
 def _ensure() -> sessionmaker:

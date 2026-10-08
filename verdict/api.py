@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from statistics import mean
@@ -164,15 +165,16 @@ def score(req: ScoreRequest) -> dict:
     client = LLMClient(reg)
     inp = JudgeInput(req.question, req.context, req.reference, "")
     t0 = time.perf_counter()
+    tasks = [(reg.rubric(r), j) for r in req.rubrics for j in req.judges]
+    # all (rubric, judge) calls in parallel: latency = slowest call, not the sum
+    with ThreadPoolExecutor(max_workers=len(tasks) or 1) as pool:
+        res = list(pool.map(lambda t: judge_pointwise(client, reg.judge_chain(t[1]), t[0], inp, req.response), tasks))
     out, rows = {}, []
-    for rub_id in req.rubrics:
-        rub = reg.rubric(rub_id)
-        out[rub.id] = {}
-        for j in req.judges:
-            r = judge_pointwise(client, reg.judge_chain(j), rub, inp, req.response)
-            out[rub.id][j] = {"score": r.score, "rationale": r.rationale, "abstain": r.abstain}
-            rows.append(db.OnlineScore(app=req.app, rubric_id=rub.id, judge_id=j, score=r.score,
-                                       payload={"question": req.question[:500], "response": req.response[:2000]}))
+    for (rub, j), r in zip(tasks, res):
+        out.setdefault(rub.id, {})[j] = {"score": r.score, "rationale": r.rationale, "abstain": r.abstain,
+                                         "served_model": r.served_model}
+        rows.append(db.OnlineScore(app=req.app, rubric_id=rub.id, judge_id=j, score=r.score,
+                                   payload={"question": req.question[:500], "response": req.response[:2000]}))
     db.add_all(rows)
     return {"scores": out, "latency_ms": (time.perf_counter() - t0) * 1000}
 

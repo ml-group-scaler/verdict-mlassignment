@@ -12,6 +12,7 @@ from ..config import ModelCfg, ProviderCfg
 from .base import LLMResponse, ProviderError
 
 RETRYABLE = {408, 409, 429, 500, 502, 503, 504}
+THROTTLE_RETRIES = 8  # extra patience for 429s (~5 min of backoff in total)
 
 
 class OpenAICompatProvider:
@@ -43,7 +44,9 @@ class OpenAICompatProvider:
         timeout = model.timeout_s or self.cfg.timeout_s
 
         last_err: Exception | None = None
-        for attempt in range(retries + 1):
+        throttled = 0
+        attempt = 0
+        while attempt <= retries:
             t0 = time.perf_counter()
             try:
                 r = self._client.post("/chat/completions", json=body, headers=headers, timeout=timeout)
@@ -56,13 +59,22 @@ class OpenAICompatProvider:
                 msg = f"HTTP {r.status_code} from {model.model}: {r.text[:300]}"
                 if r.status_code not in RETRYABLE:
                     raise ProviderError(msg)
-                last_err = ProviderError(msg, retryable=True)
-                retry_after = r.headers.get("retry-after")
-                if retry_after and retry_after.replace(".", "", 1).isdigit():
-                    time.sleep(min(float(retry_after), 60))
+                if r.status_code == 429:
+                    # Throttling is "slow down", not "endpoint down": wait longer, don't trip the
+                    # circuit breaker (availability=False), and don't burn the normal retry budget.
+                    throttled += 1
+                    last_err = ProviderError(msg, retryable=True, availability=False)
+                    if throttled > THROTTLE_RETRIES:
+                        break
+                    retry_after = r.headers.get("retry-after")
+                    wait = float(retry_after) if retry_after and retry_after.replace(".", "", 1).isdigit() \
+                        else min(5 * 2 ** (throttled - 1), 60)
+                    time.sleep(min(wait, 60) + random.random())
                     continue
-            if attempt < retries:
-                time.sleep(min(2 ** attempt + random.random(), 30))
+                last_err = ProviderError(msg, retryable=True)
+            attempt += 1
+            if attempt <= retries:
+                time.sleep(min(2 ** (attempt - 1) + random.random(), 30))
         raise last_err or ProviderError("unknown provider failure")
 
     @staticmethod
