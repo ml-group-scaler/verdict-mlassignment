@@ -137,6 +137,30 @@ def labels_export(out: Path = typer.Option(ROOT / "data/human_labels/labels.json
     typer.echo(f"wrote {len(rows)} labels to {out}")
 
 
+@app.command("snapshot-export")
+def snapshot_export(
+    run_ids: str = typer.Argument(..., help="comma-separated run ids to include"),
+    out: Path = typer.Option(ROOT / "data/demo/snapshot.jsonl.gz"),
+    cache: bool = typer.Option(True, help="include the LLM response cache (lets the demo re-run cached configs offline)"),
+) -> None:
+    """Export runs (+ judgments, telemetry, latest reports, cache) for seeding another deployment."""
+    from . import snapshot
+
+    db.init()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    counts = snapshot.export(out, _csv(run_ids) or [], include_cache=cache)
+    typer.echo(f"wrote {out} ({out.stat().st_size / 1024:.0f} KiB): {counts}")
+
+
+@app.command("snapshot-import")
+def snapshot_import(path: Path = typer.Option(ROOT / "data/demo/snapshot.jsonl.gz")) -> None:
+    """Import a snapshot into the current database (existing runs are skipped)."""
+    from . import snapshot
+
+    db.init()
+    typer.echo(snapshot.import_(path))
+
+
 @app.command()
 def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
     """Start the API (with the background worker)."""

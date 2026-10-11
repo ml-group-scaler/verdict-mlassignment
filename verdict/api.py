@@ -34,6 +34,12 @@ _worker: Worker | None = None
 async def lifespan(_: FastAPI):  # noqa: ANN201
     global _worker
     db.init()
+    if settings.seed_demo():
+        from . import snapshot
+
+        seeded = snapshot.seed_if_empty(settings.DEMO_SNAPSHOT)
+        if seeded:
+            logging.getLogger("verdict.api").info("seeded demo snapshot: %s", seeded)
     if settings.worker_enabled():
         _worker = Worker()
         _worker.start()
@@ -232,11 +238,13 @@ def latest_report(kind: str) -> dict:
 
 
 @app.get("/v1/ops", dependencies=[Depends(auth)])
-def ops(hours: float = Query(24, gt=0)) -> dict:
-    since = db.utcnow() - timedelta(hours=hours)
+def ops(hours: float = Query(24, ge=0, description="look-back window; 0 = all time")) -> dict:
     with db.session() as s:
-        calls = list(s.scalars(select(db.LLMCall).where(db.LLMCall.created_at >= since)))
-        online = list(s.scalars(select(db.OnlineScore).where(db.OnlineScore.created_at >= since)))
+        qc, qo = select(db.LLMCall), select(db.OnlineScore)
+        if hours:
+            since = db.utcnow() - timedelta(hours=hours)
+            qc, qo = qc.where(db.LLMCall.created_at >= since), qo.where(db.OnlineScore.created_at >= since)
+        calls, online = list(s.scalars(qc)), list(s.scalars(qo))
     real = [c for c in calls if not c.cache_hit and not c.error]
     by_model = {}
     for m in sorted({c.model_id for c in calls}):

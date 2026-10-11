@@ -1,0 +1,17 @@
+# Render Blueprint — deploys the Verdict API (FastAPI + background worker) from the Dockerfile.
+# Render dashboard → New → Blueprint → pick this repo. Free plan: the instance sleeps when idle and
+# its disk is ephemeral, so VERDICT_SEED_DEMO re-seeds the committed live-run snapshot on each boot.
+services:
+  - type: web
+    name: verdict-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: VERDICT_SEED_DEMO
+        value: "1"
+      - key: NVIDIA_API_KEY        # optional: enables real (non-mock) runs; set it in the dashboard
+        sync: false
+      - key: VERDICT_API_KEY       # clients must send this as the X-API-Key header
+        generateValue: true

@@ -20,3 +20,11 @@ def api_key() -> str | None:
 
 def worker_enabled() -> bool:
     return os.environ.get("VERDICT_DISABLE_WORKER", "").lower() not in {"1", "true", "yes"}
+
+
+DEMO_SNAPSHOT = ROOT / "data" / "demo" / "snapshot.jsonl.gz"
+
+
+def seed_demo() -> bool:
+    """Seed an empty database with the committed demo snapshot (real live runs) on startup."""
+    return os.environ.get("VERDICT_SEED_DEMO", "").lower() in {"1", "true", "yes"}

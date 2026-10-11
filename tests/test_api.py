@@ -88,3 +88,15 @@ def test_auto_migration_adds_missing_columns(tmp_path):
     db._migrate(__import__("sqlalchemy").create_engine(f"sqlite:///{path}"))
     cols = {r[1] for r in sqlite3.connect(path).execute("pragma table_info(runs)")}
     assert {"heartbeat_at", "summary", "error"} <= cols
+
+
+def test_ops_all_time_window():
+    from datetime import timedelta
+
+    from verdict import db
+
+    db.add_all([db.LLMCall(purpose="judge", model_id="old-model-for-ops-test", latency_ms=1.0,
+                           created_at=db.utcnow() - timedelta(days=3))])
+    with TestClient(app) as c:
+        assert "old-model-for-ops-test" in c.get("/v1/ops", params={"hours": 0}).json()["by_model"]
+        assert "old-model-for-ops-test" not in c.get("/v1/ops", params={"hours": 24}).json()["by_model"]

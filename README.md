@@ -102,7 +102,7 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
 
 | metric | value | source |
 |---|---|---|
-| Unit/integration tests | 42 passed | `pytest` |
+| Unit/integration tests | 45 passed | `pytest` |
 | API load test (mock judge, laptop, 20 users) | **63.8 req/s, p50 6 ms, p99 73 ms, 0 failures / 1,214 req** | `scripts/locustfile.py` |
 | Offline mock run (45 items × 3 systems × 4 rubrics × 2 judges + pairwise) | 1,775 LLM calls in ~1.5 s; re-run 100% cache hits, identical results | `verdict run --profile mock` |
 | Mock bias controls | injected 25% position bias detected as 19% flip rate; injection probe Δ +1.86 for the weak judge, 0.00 for the strict one | proves the detectors work |
@@ -144,6 +144,22 @@ cp .env.example .env                      # add NVIDIA_API_KEY=nvapi-... for rea
 .venv/bin/verdict serve --port 8000
 VERDICT_API_URL=http://localhost:8000 .venv/bin/streamlit run ui/app.py
 ```
+
+## Deployment
+
+**Live demo:** https://verdict-mlassignment-pypux4xtznsbnfxw5wmmgs.streamlit.app/
+
+| mode | how | when |
+|---|---|---|
+| **Embedded** (current public demo) | Streamlit Community Cloud runs `ui/app.py`; with no `VERDICT_API_URL` set, the UI starts the real FastAPI app + worker **in-process** and seeds an empty DB from `data/demo/snapshot.jsonl.gz` (the live NVIDIA CI run: 400 judgments, 455 traced calls, probe report, 924 cached responses) | zero-setup, free; cloud DB is ephemeral, so labels/runs made there vanish on restart |
+| **Remote** (matches the architecture diagram) | deploy the API from the `Dockerfile` (`render.yaml` = one-click Render Blueprint; any Docker host works), then set `VERDICT_API_URL` (+ `VERDICT_API_KEY`) in the Streamlit app's **Secrets** | persistent API others (and the GitHub Action) can call |
+
+Streamlit settings: main file `ui/app.py`, dependencies from `requirements.txt`. Optional secrets: `NVIDIA_API_KEY`
+(enables real runs from the cloud UI — note anyone with the link could then spend your NVIDIA quota), `VERDICT_API_URL`,
+`VERDICT_API_KEY`. Refresh the demo data with `verdict snapshot-export <run_ids>`.
+
+Verified 2026-10-11: clean-checkout embedded boot (all pages, drill-down, a new run), `docker build` + container
+(seeding, auth 401 without key, async run), and the UI in remote mode against the container.
 
 ## CI
 
@@ -193,7 +209,7 @@ retry cheap) · free-tier cold start (Action client retries).
 - [ ] Add `NVIDIA_API_KEY` as a GitHub secret so `eval-gate.yml` / `judge-calibration.yml` run on PRs.
 - [ ] Re-enable Kimi-K3 in `configs/profiles/*.yaml` once its free endpoint responds (it took ~3 min/call or timed out on 2026-10-08).
 - [ ] Decide the PR-gate policy given the 20-item power problem (see Numbers → Finding).
-- [ ] Deploy (API + UI) and add the live URL; screenshot a PR blocked by `eval-gate`.
+- [ ] Optionally deploy the API (`render.yaml`) and set `VERDICT_API_URL` in Streamlit secrets; screenshot a PR blocked by `eval-gate`.
 
 ## Resume line
 

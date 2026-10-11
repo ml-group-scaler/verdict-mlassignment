@@ -1,28 +1,69 @@
 """Verdict UI (Streamlit). Talks to the Verdict API over REST only.
 
-Run:  VERDICT_API_URL=http://localhost:8000 streamlit run ui/app.py
+Two modes:
+  * remote   — VERDICT_API_URL is set: every call goes over HTTP to that API.
+  * embedded — VERDICT_API_URL is unset (e.g. Streamlit Community Cloud): the same FastAPI app
+               runs in-process (with its background worker) and, on an empty database, is seeded
+               with the committed snapshot of the real live NVIDIA runs.
+
+Run:  VERDICT_API_URL=http://localhost:8000 streamlit run ui/app.py      (remote)
+      streamlit run ui/app.py                                            (embedded)
 """
 from __future__ import annotations
 
 import os
 import random
+import sys
+import tempfile
 import time
+from pathlib import Path
 
 import altair as alt
 import httpx
 import pandas as pd
 import streamlit as st
 
-API = os.environ.get("VERDICT_API_URL", "http://localhost:8000").rstrip("/")
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))  # `import verdict` when Streamlit runs ui/app.py from the repo root
+
+try:  # Streamlit secrets (Cloud: app settings → Secrets) become env vars, without overriding real ones
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, (str, int, float)) and _k not in os.environ:
+            os.environ[_k] = str(_v)
+except Exception:  # noqa: BLE001 — no secrets file locally
+    pass
+
+API = os.environ.get("VERDICT_API_URL", "").strip().rstrip("/")
+EMBEDDED = API in ("", "embedded")
 KEY = os.environ.get("VERDICT_API_KEY", "")
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 
 st.set_page_config(page_title="Verdict — LLM-as-judge leaderboard", page_icon="⚖️", layout="wide")
 
 
+@st.cache_resource(show_spinner="Starting the embedded Verdict service…")
+def _embedded_client():  # noqa: ANN202
+    """Run the real FastAPI app in-process (lifespan = DB init + demo seed + background worker)."""
+    if "DATABASE_URL" not in os.environ and not os.access(ROOT, os.W_OK):
+        os.environ["DATABASE_URL"] = f"sqlite:///{Path(tempfile.gettempdir()) / 'verdict.db'}"
+    os.environ.setdefault("VERDICT_SEED_DEMO", "1")
+    from fastapi.testclient import TestClient
+
+    from verdict.api import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    client.__enter__()
+    return client
+
+
 def api(method: str, path: str, **kw):  # noqa: ANN003, ANN201
+    headers = {"X-API-Key": KEY} if KEY else {}
     try:
-        r = httpx.request(method, f"{API}{path}", headers={"X-API-Key": KEY} if KEY else {}, timeout=60, **kw)
+        if EMBEDDED:
+            r = _embedded_client().request(method, path, headers=headers, **kw)
+        else:
+            r = httpx.request(method, f"{API}{path}", headers=headers, timeout=60, **kw)
     except httpx.HTTPError as e:
         st.error(f"Cannot reach the Verdict API at {API}: {e}")
         st.stop()
@@ -311,7 +352,8 @@ def page_quality() -> None:
 
 def page_ops() -> None:
     st.title("📈 Ops — latency, cost, errors, online quality")
-    hours = st.select_slider("Window", options=[1, 6, 24, 72, 168], value=24, format_func=lambda h: f"last {h} h")
+    hours = st.select_slider("Window", options=[1, 6, 24, 72, 168, 0], value=0,
+                             format_func=lambda h: "all time" if h == 0 else f"last {h} h")
     o = api("GET", f"/v1/ops?hours={hours}")
     k = st.columns(5)
     k[0].metric("LLM calls", f"{o['calls']:,}")
@@ -364,5 +406,8 @@ def page_new_run() -> None:
 PAGES = {"🏆 Leaderboard": page_leaderboard, "🔍 Explore run": page_explore, "🏷️ Label": page_label,
          "🧪 Calibration & bias": page_quality, "📈 Ops": page_ops, "▶️ New run": page_new_run}
 choice = st.sidebar.radio("Verdict", list(PAGES))
-st.sidebar.caption(f"API: {API}")
+st.sidebar.caption("API: embedded (in-process FastAPI + worker)" if EMBEDDED else f"API: {API}")
+if EMBEDDED:
+    st.sidebar.caption("Demo data: real live NVIDIA NIM run (2026-10-08). New runs here use the cloud's own "
+                       "temporary database.")
 PAGES[choice]()

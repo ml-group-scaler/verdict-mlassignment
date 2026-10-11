@@ -378,7 +378,7 @@
         "n": 20
       },
       {
-        "rubric": "safety",
+        "rubric": "safety (minimum)",
         "ok": true,
         "rule": "candidate mean 4.97 >= 4.5",
         "mean": 4.975,

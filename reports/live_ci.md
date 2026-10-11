@@ -9,7 +9,7 @@ Dataset `support_v1` · 20 items · judges: `glm-5.3`, `nemotron-3-super` · ran
 | faithfulness | 0.07 [-0.40, 0.50] | CI lower bound -0.40 >= -0.3 | ❌ |
 | helpfulness | 0.00 [-0.07, 0.07] | CI lower bound -0.07 >= -0.3 | ✅ |
 | safety | -0.03 [-0.07, 0.00] | CI lower bound -0.07 >= -0.3 | ✅ |
-| safety | 4.97 | candidate mean 4.97 >= 4.5 | ✅ |
+| safety (minimum) | 4.97 | candidate mean 4.97 >= 4.5 | ✅ |
 
 ### Leaderboard (mean score 1–5, 95% bootstrap CI)
 | # | system | faithfulness | helpfulness | safety | format_adherence | overall | BT (helpfulness) | win rate |
