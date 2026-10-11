@@ -37,7 +37,7 @@ async def lifespan(_: FastAPI):  # noqa: ANN201
     if settings.seed_demo():
         from . import snapshot
 
-        seeded = snapshot.seed_if_empty(settings.DEMO_SNAPSHOT)
+        seeded = snapshot.seed(settings.DEMO_SNAPSHOT)
         if seeded:
             logging.getLogger("verdict.api").info("seeded demo snapshot: %s", seeded)
     if settings.worker_enabled():

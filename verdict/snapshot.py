@@ -7,6 +7,7 @@ whose filesystem is ephemeral) boots with the live NVIDIA runs already on the le
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +67,8 @@ def import_(path: Path) -> dict:
     with db.write() as s:
         existing_runs = set(s.scalars(select(db.Run.id)))
         existing_cache = set(s.scalars(select(db.CacheEntry.key)))
+        existing_reports = {(r.kind, r.created_at.replace(tzinfo=None)) for r in s.scalars(select(db.Report))}
+        existing_online = {o.created_at.replace(tzinfo=None) for o in s.scalars(select(db.OnlineScore))}
         skip_runs = {r.id for r in batch.get("runs", []) if r.id in existing_runs}
         for name in [m.__tablename__ for m in TABLES]:
             rows = batch.get(name, [])
@@ -75,16 +78,29 @@ def import_(path: Path) -> dict:
                 rows = [r for r in rows if r.key not in existing_cache]
             elif name in ("generations", "judgments", "llm_calls"):
                 rows = [r for r in rows if r.run_id not in skip_runs]
+            elif name == "reports":
+                rows = [r for r in rows if (r.kind, r.created_at.replace(tzinfo=None)) not in existing_reports]
+            elif name == "online_scores":
+                rows = [r for r in rows if r.created_at.replace(tzinfo=None) not in existing_online]
             s.add_all(rows)
             counts[name] = len(rows)
     return counts
 
 
-def seed_if_empty(path: Path) -> dict | None:
-    """Import the snapshot only into a database that has no runs yet."""
+def seed(path: Path) -> dict | None:
+    """Import the snapshot unless this exact file (by content hash) was already imported.
+    Idempotent and incremental: an existing database gains the snapshot's missing runs (e.g. after a
+    redeploy with a newer snapshot) without duplicating runs, cache entries, reports or online scores."""
     if not path.exists():
         return None
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
     with db.session() as s:
-        if s.scalar(select(func.count()).select_from(db.Run)):
-            return None
-    return import_(path)
+        done = [r.payload.get("sha256") for r in s.scalars(select(db.Report).where(db.Report.kind == "snapshot_import"))]
+    if digest in done:
+        return None
+    counts = import_(path)
+    db.add_all([db.Report(kind="snapshot_import", payload={"sha256": digest, "file": path.name, "counts": counts})])
+    return counts
+
+
+seed_if_empty = seed  # backwards-compatible name

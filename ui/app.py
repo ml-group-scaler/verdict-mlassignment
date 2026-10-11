@@ -425,6 +425,6 @@ PAGES = {"🏆 Leaderboard": page_leaderboard, "🔍 Explore run": page_explore,
 choice = st.sidebar.radio("Verdict", list(PAGES))
 st.sidebar.caption("API: embedded (in-process FastAPI + worker)" if EMBEDDED else f"API: {API}")
 if EMBEDDED:
-    st.sidebar.caption("Demo data: real live NVIDIA NIM run (2026-10-08). New runs here use the cloud's own "
-                       "temporary database.")
+    st.sidebar.caption("Demo data: committed snapshot of the real live runs (NVIDIA NIM judges, Factory Droid "
+                       "fallback). New runs here use the cloud's own temporary database.")
 PAGES[choice]()

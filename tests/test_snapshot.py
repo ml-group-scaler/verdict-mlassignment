@@ -28,3 +28,24 @@ def test_committed_demo_snapshot_is_valid(tmp_path):
 
     tables = {json.loads(l)["table"] for l in gzip.open(DEMO_SNAPSHOT, "rt")}
     assert {"runs", "generations", "judgments", "llm_calls"} <= tables
+
+
+def test_seed_is_incremental_and_idempotent(tmp_path):
+    """A DB that already holds an older snapshot gains the new snapshot's missing runs — once."""
+    import os
+
+    r1, _ = run_sync(RunRequest(profile="mock", sample=2, label="old"))
+    r2, _ = run_sync(RunRequest(profile="mock", sample=3, label="new"))
+    old, new = tmp_path / "old.jsonl.gz", tmp_path / "new.jsonl.gz"
+    snapshot.export(old, [r1])
+    snapshot.export(new, [r1, r2])
+    db.init(f"sqlite:///{tmp_path / 'cloud.db'}")
+    try:
+        assert snapshot.seed(old)["runs"] == 1
+        first = snapshot.seed(new)                 # redeploy with a newer snapshot
+        assert first["runs"] == 1                  # only the missing run is added
+        assert first["reports"] == 0 and first["online_scores"] == 0   # nothing duplicated
+        assert snapshot.seed(new) is None          # same file again → no-op
+        assert {r.id for r in db.list_runs()} == {r1, r2}
+    finally:
+        db.init(os.environ["DATABASE_URL"])
