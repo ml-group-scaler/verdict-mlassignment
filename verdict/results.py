@@ -233,6 +233,7 @@ def summarize(run_id: str, spec: RunSpec, reg: Registry) -> dict:
         "tokens_in": sum(c.input_tokens for c in calls if not c.cache_hit),
         "tokens_out": sum(c.output_tokens for c in calls if not c.cache_hit),
         "cost_usd": sum(c.cost_usd for c in calls),
+        "provider_credits": sum((c.credits or 0) for c in calls),
         "cost_per_judgment_usd": sum(c.cost_usd for c in calls if c.purpose in ("judge", "repair")) / n_judg,
     }
 

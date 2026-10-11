@@ -93,7 +93,8 @@ def pick_run(key: str, only_done: bool = True) -> dict | None:
 
 def interval_chart(df: pd.DataFrame, x_title: str, domain: list[float] | None = None) -> alt.Chart:
     """Dot + 95% CI rule per system (single series, so no legend)."""
-    base = alt.Chart(df).encode(y=alt.Y("system:N", sort=list(df["system"]), title=None))
+    base = alt.Chart(df).encode(y=alt.Y("system:N", sort=list(df["system"]), title=None,
+                                        axis=alt.Axis(labelLimit=320)))  # full system names, no "…" truncation
     scale = alt.Scale(domain=domain) if domain else alt.Scale(zero=False)
     rule = base.mark_rule(strokeWidth=2, color=SERIES[0]).encode(
         x=alt.X("lo:Q", title=x_title, scale=scale), x2="hi:Q")
@@ -118,9 +119,25 @@ def page_leaderboard() -> None:
         (st.success if g["passed"] else st.error)(
             f"Merge gate {'PASSED ✅' if g['passed'] else 'FAILED ❌'} — `{g['candidate']}` vs `{g['baseline']}` "
             f"({g['mode']}, margin {g['margin']})")
-        st.dataframe(pd.DataFrame([{"check": c["rubric"], "Δ mean": c.get("mean"), "CI low": c.get("lo"), "CI high": c.get("hi"),
+
+        def num(v):  # noqa: ANN001, ANN202
+            return "—" if v is None else f"{v:+.3f}"
+
+        st.dataframe(pd.DataFrame([{"check": c["rubric"], "Δ cand − base (or value)": num(c.get("mean")) if c.get("lo") is not None
+                                    else f"{c['mean']:.2f}" if c.get("mean") is not None else "—",
+                                    "CI low": num(c.get("lo")), "CI high": num(c.get("hi")),
                                     "rule": c["rule"], "ok": "✅" if c["ok"] else "❌"} for c in g["checks"]]),
                      hide_index=True, width="stretch")
+        for c in g["checks"]:
+            if c["ok"] or c.get("lo") is None or c.get("mean") is None:
+                continue
+            if c["mean"] >= -g["margin"]:
+                st.caption(f"**Why {c['rubric']} failed:** the candidate is not measurably worse (Δ {c['mean']:+.2f}), but with "
+                           f"{c.get('n')} items the 95% CI [{c['lo']:+.2f}, {c['hi']:+.2f}] is too wide to *prove* the drop is "
+                           f"smaller than {g['margin']}. The gate is underpowered at this sample size — more items narrow the CI.")
+            else:
+                st.caption(f"**Why {c['rubric']} failed:** the candidate scores lower (Δ {c['mean']:+.2f}, CI "
+                           f"[{c['lo']:+.2f}, {c['hi']:+.2f}]) — a real regression beyond the {g['margin']} margin.")
 
     pw = s.get("pairwise", {})
     pw_r = next(iter(pw), None)

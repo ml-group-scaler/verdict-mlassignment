@@ -6,5 +6,12 @@ providers:
     api_key_env: NVIDIA_API_KEY
     timeout_s: 180        # Kimi-K3 always "thinks" first, so responses can be slow
     max_retries: 4
+  droid:
+    # Factory Droid via the official `droid exec` CLI — FALLBACK ONLY (~9k Factory credits per call,
+    # because Droid sends its agent system prompt every time). Key: DROID_API_KEY (an fk-... key).
+    type: droid_exec
+    api_key_env: DROID_API_KEY
+    timeout_s: 180
+    max_retries: 1
   mock:
     type: mock            # deterministic, offline — used by tests and the no-key demo

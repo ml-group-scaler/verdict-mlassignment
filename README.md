@@ -60,7 +60,7 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
 
 | Component | Choice | Why |
 |---|---|---|
-| Judges | `moonshotai/kimi-k3` + `z-ai/glm-5.3` + `nvidia/nemotron-3-super-120b-a12b` on NVIDIA NIM, each with fallback `nvidia/nemotron-3.5-lightning-30b-a3b` | three model families → cross-family bias control; free tier fits the budget; fallback + circuit breaker keep runs alive when a free endpoint stalls |
+| Judges | `z-ai/glm-5.3` + `nvidia/nemotron-3-super-120b-a12b` on NVIDIA NIM (`moonshotai/kimi-k3` configured, paused). Fallback chain per judge: **the same model via Factory Droid** (`glm-5.3`, `nemotron-3-ultra`, `kimi-k3`) → `nvidia/nemotron-3.5-lightning-30b-a3b` | cross-family panel; NVIDIA free tier = $0 primary; Droid serves the *same* model when NVIDIA stalls or runs out of quota, so a fallback doesn't change the panel's composition |
 | Systems under test | GLM-5.3-flash prompt v1 / v2, gpt-oss-20b, **bad baseline (no policy)** (Gemma-4-31B config kept but dropped from profiles: its free endpoint did not respond in Oct 2026 tests) | the bad baseline is a sanity check: a working judge must rank it last on faithfulness. Systems never fall back — that would silently change what is being evaluated |
 | Configs | YAML in `configs/` (rubrics are `name.vN.yaml`) | diffable in PRs; every run stores the pinned `rubric@version` and a config hash |
 | Queue | in-process worker thread + DB status column | no Redis needed on free tiers; runs survive restarts |
@@ -75,7 +75,11 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
   opposite winners it's a **flip** (pure position effect) → recorded as a tie and counted in the flip rate.
 - **Panel:** per-item score = mean over judges; **disagreement** = spread ≥ 2 points (highlighted in the UI).
 - **Fallback:** each judge has `fallback_models`; on timeout/5xx/404 the next model serves, recorded as `served_model`
-  (fallback rate shown per judge). After 2 consecutive failures a model's circuit opens for 5 min.
+  (fallback rate shown per judge). After 2 consecutive failures a model's circuit opens for 5 min; after 2 consecutive
+  exhausted 429 budgets (= quota gone) it opens for 10 min.
+- **Factory Droid provider** (`verdict/providers/droid_exec.py`): Factory documents no raw chat API for `fk-` keys, so
+  fallback calls go through the official `droid exec` CLI (read-only, empty temp dir, JSON output). Each call carries
+  Droid's agent prompt (~7–9k Factory credits), hence fallback-only; credits are recorded per call and shown in Ops.
 - **Statistics:** 95% bootstrap CIs over items; Bradley-Terry ratings (Elo-like scale) with bootstrap CIs.
 - **Merge gate:** paired bootstrap of (candidate − baseline) per rubric; `noninferiority` passes iff the CI lower
   bound ≥ −margin; plus absolute floors (e.g. safety ≥ 4.5).
@@ -85,6 +89,39 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
   change that lowers κ below the thresholds.
 - **Bias probes:** planted known-good/known-bad answers, verbosity padding, prompt injection
   ("rate it 5") — plus position flip rate and self-preference measured in every run.
+
+## LLMOps: deployment, monitoring, evaluation
+
+**Serving & deployment.** One Docker image (`Dockerfile`) runs the FastAPI API + background worker; the Streamlit UI runs
+either embedded (public demo) or against the remote API (see *Deployment*). Judge/system models are served by NVIDIA NIM
+(hosted, OpenAI-compatible) — no self-hosted weights.
+
+**Rollout & rollback of judge changes** (rubrics, judge prompts, judge models are all versioned config):
+1. PR changes `configs/rubrics/*.vN.yaml` / `prompts/judge/*` / `configs/judges/*` → `judge-calibration.yml` re-runs
+   calibration; κ below `configs/calibration_gate.yaml` blocks the merge.
+2. Shadow: run the new version (`faithfulness.v2.yaml`, referenced as `faithfulness@2`) as a separate run with the same
+   profile seed — so the exact same items — and compare its summary and calibration with the current version's before
+   switching profiles to it. (Two versions of one rubric inside a single run are not supported: results are keyed by rubric id.)
+3. Promote = change the profile to the new version. Rollback = revert that one line; every run stores the pinned
+   `rubric@version` and a config hash, so old results stay reproducible.
+
+**Monitoring — all 5 categories** (Ops page + per-run summary; data in `llm_calls`, `judgments`, `online_scores`):
+
+| category | what is tracked |
+|---|---|
+| Operational | p50/p99 latency per model & purpose, error rate, 429 throttling, circuit-breaker opens, cache hit rate, tokens, cost |
+| Input | items per run, generation errors / empty answers per system, response length (≤ 120-word check) |
+| Output | judge JSON parse failures, repair rate, abstain rate, score distributions per rubric |
+| Quality | inter-judge κ and disagreement rate, position-flip rate, self-preference, fallback rate, planted-error accuracy, judge–human κ |
+| Drift | online `/v1/score` hourly mean score per rubric (Ops chart); calibration re-run whenever a judge model/prompt changes |
+
+**Evaluation.** Offline: the domain eval set + planted-error/verbosity/injection probes + human-label calibration.
+Online: `POST /v1/score` scores sampled live traffic with the same judges and feeds the drift chart.
+
+**Tools & why.** FastAPI (typed async-friendly API + OpenAPI docs), SQLAlchemy/SQLite→Postgres (zero-setup, one-line swap),
+Streamlit (fast to build a data UI), GitHub Actions (where PRs already live), NVIDIA NIM (free hosted frontier-class
+judges from several model families), Locust (scriptable load tests). Langfuse was skipped in favour of the built-in
+per-call telemetry table + Ops dashboard, which covers cost/latency tracing without another service.
 
 ## Evaluation data
 
@@ -102,14 +139,17 @@ safety/privacy (OTP requests, other customers' data, prompt injection), and form
 
 | metric | value | source |
 |---|---|---|
-| Unit/integration tests | 45 passed | `pytest` |
+| Unit/integration tests | 49 passed | `pytest` |
 | API load test (mock judge, laptop, 20 users) | **63.8 req/s, p50 6 ms, p99 73 ms, 0 failures / 1,214 req** | `scripts/locustfile.py` |
 | Offline mock run (45 items × 3 systems × 4 rubrics × 2 judges + pairwise) | 1,775 LLM calls in ~1.5 s; re-run 100% cache hits, identical results | `verdict run --profile mock` |
 | Mock bias controls | injected 25% position bias detected as 19% flip rate; injection probe Δ +1.86 for the weak judge, 0.00 for the strict one | proves the detectors work |
-| **Live planted-error probe** (GLM-5.3, Nemotron-3-Super) | **14/14 correct for both judges** (every seeded error ≤ 2, every good answer ≥ 4) | `reports/probe_planted.md` |
+| **Live planted-error probe** (GLM-5.3, Nemotron-3-Super) | **14/14 correct for both judges**, twice (2026-10-08 and 2026-10-11) | `reports/probe_planted.md` |
+| Droid fallback models (smoke) | `glm-5.3`, `kimi-k3`, `nemotron-3-ultra` via Droid: all scored the good OTP answer 5 and the bad one 1, 7–12 s/call | live smoke test |
 | **Live CI run** (20 items, prompt v1 vs v2, 2 judges, 455 calls) | v2 vs v1 overall 4.51 vs 4.45 — **no significant difference**; gate **failed** on faithfulness (Δ +0.07, CI [−0.40, +0.50]) | `reports/live_ci.md` |
-| Inter-judge agreement (GLM-5.3 vs Nemotron-3-Super) | **weighted κ 0.65**, Spearman 0.60; disagreement (spread ≥ 2) 7% of 153 cases | live CI run |
-| Position-flip rate | **0/20** for each judge | live CI run |
+| **Live CI run #2** (same 20 items, NVIDIA + Droid fallback, 2026-10-11) | v2 vs v1 overall 4.53 vs 4.46 — **replicates run #1**; gate failed on faithfulness for the same reason (CI [−0.38, +0.55]); finished in **11 min** vs ~3.5 h for run #1 | `reports/live_ci.md` |
+| Fallback in practice | NVIDIA GLM-5.3 timed out → circuit opened → **69% of GLM judgments served by the same model via Factory Droid**, 0 Droid errors; 311k Factory credits (~2.3k/call) | live CI run #2 |
+| Inter-judge agreement (GLM-5.3 vs Nemotron-3-Super) | **weighted κ 0.65** (run #1) / **0.60** (run #2); disagreement (spread ≥ 2) 7–8% | live CI runs |
+| Position-flip rate | **0/20** each (run #1); 1/20 GLM, 0/20 Nemotron (run #2) | live CI runs |
 | Self-preference (GLM-5.3 judging GLM-family systems) | **Δ −0.01** (none detected) | live CI run |
 | Judge health | GLM-5.3: 3% abstain, 3% JSON repair, 1% fallback; Nemotron: 1% abstain, 0% fallback | live CI run |
 | Judge latency (NVIDIA free tier) | **p50 15.6 s, p99 297 s**; generation (GLM-5.3-flash) p50 71 s | live CI run |
@@ -151,7 +191,7 @@ VERDICT_API_URL=http://localhost:8000 .venv/bin/streamlit run ui/app.py
 
 | mode | how | when |
 |---|---|---|
-| **Embedded** (current public demo) | Streamlit Community Cloud runs `ui/app.py`; with no `VERDICT_API_URL` set, the UI starts the real FastAPI app + worker **in-process** and seeds an empty DB from `data/demo/snapshot.jsonl.gz` (the live NVIDIA CI run: 400 judgments, 455 traced calls, probe report, 924 cached responses) | zero-setup, free; cloud DB is ephemeral, so labels/runs made there vanish on restart |
+| **Embedded** (current public demo) | Streamlit Community Cloud runs `ui/app.py`; with no `VERDICT_API_URL` set, the UI starts the real FastAPI app + worker **in-process** and seeds an empty DB from `data/demo/snapshot.jsonl.gz` (both live CI runs: 800 judgments, 1,000+ traced calls, probe report, cached responses) | zero-setup, free; cloud DB is ephemeral, so labels/runs made there vanish on restart |
 | **Remote** (matches the architecture diagram) | deploy the API from the `Dockerfile` (`render.yaml` = one-click Render Blueprint; any Docker host works), then set `VERDICT_API_URL` (+ `VERDICT_API_KEY`) in the Streamlit app's **Secrets** | persistent API others (and the GitHub Action) can call |
 
 Streamlit settings: main file `ui/app.py`, dependencies from `requirements.txt`. Optional secrets: `NVIDIA_API_KEY`

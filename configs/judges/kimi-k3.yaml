@@ -1,4 +1,4 @@
 id: kimi-k3
 description: Moonshot Kimi-K3 (always-on reasoning) via NVIDIA NIM
 model: kimi-k3
-fallback_models: [nemotron-3.5-lightning]
+fallback_models: [droid-kimi-k3, nemotron-3.5-lightning]   # Droid first (same model/family), NVIDIA Lightning last

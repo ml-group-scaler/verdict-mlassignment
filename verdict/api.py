@@ -255,7 +255,8 @@ def ops(hours: float = Query(24, ge=0, description="look-back window; 0 = all ti
                        "p50_ms": percentile(mr, 50), "p99_ms": percentile(mr, 99),
                        "tokens_in": sum(c.input_tokens for c in mc if not c.cache_hit),
                        "tokens_out": sum(c.output_tokens for c in mc if not c.cache_hit),
-                       "cost_usd": sum(c.cost_usd for c in mc)}
+                       "cost_usd": sum(c.cost_usd for c in mc),
+                       "credits": sum((c.credits or 0) for c in mc)}
     buckets: dict[tuple, list[float]] = {}
     for o in online:
         if o.score is not None:

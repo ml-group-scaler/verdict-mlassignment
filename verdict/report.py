@@ -59,7 +59,8 @@ def run_markdown(summary: dict, title: str | None = None) -> str:
             f"- Judge latency p50/p99: {_f(lj['p50'], 0)} / {_f(lj['p99'], 0)} ms (n={lj['n']}); "
             f"generation p50/p99: {_f(lg['p50'], 0)} / {_f(lg['p99'], 0)} ms (n={lg['n']})",
             f"- Tokens in/out: {o['tokens_in']:,} / {o['tokens_out']:,} · cost ${o['cost_usd']:.4f} "
-            f"(${o['cost_per_judgment_usd']:.6f}/judgment)"]
+            f"(${o['cost_per_judgment_usd']:.6f}/judgment)"
+            + (f" · Factory credits {o['provider_credits']:,.0f}" if o.get("provider_credits") else "")]
     return "\n".join(out) + "\n"
 
 

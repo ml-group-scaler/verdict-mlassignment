@@ -30,6 +30,8 @@ models:
     max_tokens: 8192       # 4096 ran out mid-reasoning on ~5% of judge calls (live CI run, Oct 2026)
     rpm: 20                # NVIDIA returned 429s for GLM-5.3 at ~35 rpm / 40 in flight
     max_concurrency: 8
+    timeout_s: 90          # NVIDIA GLM-5.3 sometimes hangs with no bytes; fail over to Droid instead of waiting
+    max_retries: 1
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     extra_body: {}
@@ -59,6 +61,26 @@ models:
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     extra_body: {}
+  # ---- Factory Droid fallbacks: the SAME models (or same family) as the NVIDIA primaries, served via Factory,
+  # so a fallback keeps the judge panel's composition instead of swapping in an unrelated model.
+  droid-glm-5.3:
+    provider: droid
+    model: glm-5.3
+    family: glm
+    max_concurrency: 4
+    timeout_s: 180
+  droid-kimi-k3:
+    provider: droid
+    model: kimi-k3
+    family: kimi
+    max_concurrency: 4
+    timeout_s: 240
+  droid-nemotron-3-ultra:
+    provider: droid
+    model: nemotron-3-ultra
+    family: nemotron
+    max_concurrency: 4
+    timeout_s: 180
   glm-5.3-flash:
     provider: nvidia
     model: z-ai/glm-5.3-flash

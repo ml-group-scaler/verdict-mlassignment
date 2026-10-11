@@ -24,7 +24,7 @@ def sha(obj: Any) -> str:
 
 class ProviderCfg(BaseModel):
     name: str
-    type: Literal["openai_compatible", "mock"]
+    type: Literal["openai_compatible", "droid_exec", "mock"]
     base_url: str | None = None
     api_key_env: str | None = None
     timeout_s: float = 60

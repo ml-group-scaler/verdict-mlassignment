@@ -63,7 +63,7 @@ class OpenAICompatProvider:
                     # Throttling is "slow down", not "endpoint down": wait longer, don't trip the
                     # circuit breaker (availability=False), and don't burn the normal retry budget.
                     throttled += 1
-                    last_err = ProviderError(msg, retryable=True, availability=False)
+                    last_err = ProviderError(msg, retryable=True, availability=False, throttled=True)
                     if throttled > THROTTLE_RETRIES:
                         break
                     retry_after = r.headers.get("retry-after")

@@ -57,7 +57,7 @@ class CircuitBreaker:
 
     def __init__(self, threshold: int = 2, cooldown_s: float = 300):
         self.threshold, self.cooldown_s = threshold, cooldown_s
-        self.failures, self.open_until = 0, 0.0
+        self.failures, self.throttled, self.open_until = 0, 0, 0.0
         self._lock = threading.Lock()
 
     def allow(self) -> bool:
@@ -67,11 +67,19 @@ class CircuitBreaker:
     def record(self, ok: bool) -> None:
         with self._lock:
             if ok:
-                self.failures, self.open_until = 0, 0.0
+                self.failures, self.throttled, self.open_until = 0, 0, 0.0
                 return
             self.failures += 1
             if self.failures >= self.threshold:
                 self.open_until = time.monotonic() + self.cooldown_s
+
+    def record_throttled(self, threshold: int = 2, cooldown_s: float = 600) -> None:
+        """A call gave up after its whole 429 backoff budget. Once is congestion; twice in a row
+        looks like an exhausted quota — open the circuit so callers go straight to the fallback."""
+        with self._lock:
+            self.throttled += 1
+            if self.throttled >= threshold:
+                self.open_until = time.monotonic() + cooldown_s
 
 
 _providers: dict[str, Provider] = {}
@@ -143,7 +151,9 @@ class LLMClient:
                 if sem:
                     sem.release()
         except ProviderError as e:
-            if e.availability:
+            if e.throttled:
+                breaker.record_throttled()
+            elif e.availability:
                 breaker.record(False)
             self._record(purpose, model_id, (time.perf_counter() - t0) * 1000, 0, 0, 0.0, False, str(e)[:500])
             raise
@@ -156,10 +166,12 @@ class LLMClient:
             with db.write() as s:
                 s.merge(db.CacheEntry(key=key, model_id=model_id, text=resp.text,
                                       input_tokens=resp.input_tokens, output_tokens=resp.output_tokens))
-        self._record(purpose, model_id, latency, resp.input_tokens, resp.output_tokens, cost, False, None)
+        self._record(purpose, model_id, latency, resp.input_tokens, resp.output_tokens, cost, False, None,
+                     credits=resp.credits or None)
         resp.latency_ms = latency
         return resp
 
-    def _record(self, purpose, model_id, latency, tin, tout, cost, hit, err) -> None:  # noqa: ANN001
+    def _record(self, purpose, model_id, latency, tin, tout, cost, hit, err, credits=None) -> None:  # noqa: ANN001
         db.add_all([db.LLMCall(run_id=self.run_id, purpose=purpose, model_id=model_id, latency_ms=latency,
-                               input_tokens=tin, output_tokens=tout, cost_usd=cost, cache_hit=hit, error=err)])
+                               input_tokens=tin, output_tokens=tout, cost_usd=cost, cache_hit=hit, error=err,
+                               credits=credits)])
